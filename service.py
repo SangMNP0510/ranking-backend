@@ -48,10 +48,17 @@ class RankingService:
         # 1. Đọc dữ liệu Realtime Database của tuần hiện tại
         weekly_data: Optional[Dict[str, Dict[str, int]]] = db_realtime.child('weekly_ranking').child(week_key).get()
 
+        # Lấy thông tin Pro của Current User từ Firestore
+        current_user_doc = db_firestore.collection('users').document(current_uid).get()
+        current_user_is_pro = False
+        if current_user_doc.exists:
+            current_user_data = current_user_doc.to_dict() or {}
+            current_user_is_pro = current_user_data.get('subscription', {}).get('isPro', False)
+
         if not weekly_data:
             return RankingResponse(
                 top10=[],
-                current_user=CurrentUserRank(rank=None, xp=0)
+                current_user=CurrentUserRank(rank=None, xp=0, is_pro=current_user_is_pro)
             )
 
         # 2. Sắp xếp giảm dần theo XP
@@ -75,28 +82,30 @@ class RankingService:
         top10_tuples = sorted_users[:10]
         top10_uids = [item[0] for item in top10_tuples]
 
-        # 5. Đọc Firestore để lấy thông tin profile (name, avatar)
+        # 5. Đọc Firestore để lấy profile và trạng thái Pro
         user_profiles: Dict[str, Dict[str, Any]] = {}
         if top10_uids:
-            # Query an toàn lấy thông tin từng user trong top 10
             for uid in top10_uids:
                 doc = db_firestore.collection('users').document(uid).get()
                 if doc.exists:
                     data = doc.to_dict() or {}
                     total_exp = data.get('gamification', {}).get('totalExp', 0)
+                    is_pro = data.get('subscription', {}).get('isPro', False)
                     user_profiles[doc.id] = {
                         'name': data.get('fullName', 'Người dùng'),
                         'avatar': data.get('avatarUrl', ''),
-                        'level': (total_exp // 1000) + 1
+                        'level': (total_exp // 1000) + 1,
+                        'is_pro': is_pro
                     }
 
-        # 6. Tạo danh sách Top 10 trả về
+        # 6. Tạo danh sách Top 10
         top10_items: List[UserRankItem] = []
         for index, (uid, data) in enumerate(top10_tuples):
             profile = user_profiles.get(uid, {
                 'name': 'Người dùng',
                 'avatar': '',
-                'level': 1
+                'level': 1,
+                'is_pro': False
             })
             
             top10_items.append(UserRankItem(
@@ -105,13 +114,15 @@ class RankingService:
                 name=profile['name'],
                 avatar=profile['avatar'],
                 xp=data.get('xp', 0),
-                level=profile['level']
+                level=profile['level'],
+                is_pro=profile['is_pro']
             ))
 
         return RankingResponse(
             top10=top10_items,
             current_user=CurrentUserRank(
                 rank=current_user_rank,
-                xp=current_user_xp
+                xp=current_user_xp,
+                is_pro=current_user_is_pro
             )
         )

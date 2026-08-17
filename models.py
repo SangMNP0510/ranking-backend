@@ -17,10 +17,12 @@ class UserRankItem(BaseModel):
     avatar: str
     xp: int
     level: int
+    is_pro: bool = False
 
 class CurrentUserRank(BaseModel):
     rank: Optional[int] = None
     xp: int
+    is_pro: bool = False
 
 class RankingResponse(BaseModel):
     top10: List[UserRankItem]
